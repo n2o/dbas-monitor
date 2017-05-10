@@ -12,18 +12,20 @@
   (with-out-str (pp/pprint col)))
 
 (defn send-mail [status response recipient]
-  (send-message {:host "smtp.gmail.com"
-                 :user "user"
-                 :pass "pass"
-                 :ssl true}
-                {:from "i@mgro.ot"
-                 :to recipient
-                 :subject "[D-BAS Monitoring] D-BAS unreachable"
-                 :body [:alternative {:type "text/html"
-                                      :content (str "<html><head>D-BAS Monitoring</head><body>
+  (try
+    (send-message {:host "smtp.gmail.com"
+                   :user "user"
+                   :pass "pass"
+                   :ssl true}
+                  {:from "i@mgro.ot"
+                   :to recipient
+                   :subject (str "[D-BAS Monitoring] " (:reason-phrase response))
+                   :body [:alternative {:type "text/html"
+                                        :content (str "<html><head>D-BAS Monitoring</head><body>
                                                     <p>Server responded with http status code: <strong>" status "</strong></p>
                                                     <pre><code>" (pretty-print response) "</code></pre>
-                                                    </body></html>")}]}))
+                                                    </body></html>")}]})
+    (catch javax.mail.AuthenticationFailedException e (str "Problem while sending mail: " (.getMessage e)))))
 
 (defn success [time]
   (do
@@ -33,19 +35,19 @@
 (defn error [status response]
   (do
     #_(println "error")
-    (spit "logs/error.log" (str (new Date)": Server unreachable " (pretty-print response) "\n") :append true)
+    (spit "logs/error.log" (str (new Date)": " (:reason-phrase response) "\n" (pretty-print response) "\n") :append true)
     (send-mail status response "i@mgro.ot")))
 
 (defn ping [url]
-  (let [res (client/head url)
+  (let [res (client/head url {:throw-exceptions false})
         status (:status res)]
     [status res]))
 
 (defn run []
   (println "Starting loop...")
   (go-loop []
-    (let [x (<! (timeout (* 15 60 1000)))  ;; ms to minutes
-          [status res] (ping "https://dbas.cs.uni-duesseldorf.de")]
+    (let [x (<! (timeout (* 10 60 1000)))  ;; ms to minutes
+          [status res] (ping "https://example.com")]
       (if (= 200 status)
         (success (:request-time res))
         (error status res)))
@@ -54,6 +56,5 @@
 ;; (reset! running? true)
 ;; (reset! running? false)
 
-(defn -main [& arg]s
-  (println "D-BAS Monitoring")
+(defn -main [& args]
   (run))
